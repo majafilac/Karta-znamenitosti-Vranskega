@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <style type="text/css">
+    html, body { height: 100%; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #map_canvas { height: 100%; width: 70%; float: left; }
+    #controls { height: 100%; width: 30%; float: right; padding: 20px; box-sizing: border-box; }
+    #controls button { width: 100%; margin-bottom: 10px; }
+    .info-box { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    #legend { margin-top: 10px; }
+    .legend-item { margin-bottom: 5px; }
+    .legend-color-box { display: inline-block; width: 20px; height: 20px; margin-right: 5px; }
+  </style>
+  <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDMn5A21MoEHdwLvJy1PnoemPIuDRP84Lg&libraries=places&sensor=false"></script>
+  <script type="text/javascript">
+    var map;
+    var directionsService;
+    var directionsRendererDriving;
+    var directionsRendererWalking;
+    var directionsRendererBicycling;
+    var startMarker;
+    var endMarker;
+
+    function initialize() {
+      var center = new google.maps.LatLng(46.24567, 14.95220); 
+
+      map = new google.maps.Map(document.getElementById("map_canvas"), {
+        center: center,
+        zoom: 15,
+        panControl: false,
+        zoomControl: true,
+        zoomControlOptions: {
+          style: google.maps.ZoomControlStyle.SMALL
+        },
+        scaleControl: false,
+        mapTypeId: google.maps.MapTypeId.ROADMAP,
+        mapTypeControlOptions: {
+          style: google.maps.MapTypeControlStyle.DROPDOWN_MENU
+        }
+      });
+
+      directionsService = new google.maps.DirectionsService();
+
+      directionsRendererDriving = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: 'blue'
+        }
+      });
+
+      directionsRendererWalking = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: 'green'
+        }
+      });
+
+      directionsRendererBicycling = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: 'red'
+        }
+      });
+
+      map.addListener('click', placeMarker);
+
+      var clearRouteButton = document.getElementById('clearRoute');
+      clearRouteButton.addEventListener('click', clearRoute);
+
+      var manualSelectionButton = document.getElementById('manualSelection');
+      manualSelectionButton.addEventListener('click', toggleManualSelection);
+      
+      var calculateRouteButton = document.getElementById('calculateRoute');
+      calculateRouteButton.addEventListener('click', calculateRoute);
+
+      addMarkers();
+    }
+
+    function placeMarker(event) {
+      if (!startMarker) {
+        startMarker = new google.maps.Marker({
+          position: event.latLng,
+          map: map,
+          draggable: true,
+          animation: google.maps.Animation.DROP,
+          title: 'Začetna točka'
+        });
+      } else if (!endMarker) {
+        endMarker = new google.maps.Marker({
+          position: event.latLng,
+          map: map,
+          draggable: true,
+          animation: google.maps.Animation.DROP,
+          title: 'Končna točka'
+        });
+      }
+    }
+
+    function clearRoute() {
+      if (startMarker) {
+        startMarker.setMap(null);
+        startMarker = null;
+      }
+      if (endMarker) {
+        endMarker.setMap(null);
+        endMarker = null;
+      }
+      directionsRendererDriving.setDirections({routes: []});
+      directionsRendererWalking.setDirections({routes: []});
+      directionsRendererBicycling.setDirections({routes: []});
+      document.getElementById('distanceDriving').innerHTML = "";
+      document.getElementById('timeDriving').innerHTML = "";
+      document.getElementById('distanceWalking').innerHTML = "";
+      document.getElementById('timeWalking').innerHTML = "";
+      document.getElementById('distanceBicycling').innerHTML = "";
+      document.getElementById('timeBicycling').innerHTML = "";
+      document.getElementById('manualSelectionInfo').innerHTML = "Izberite začetno in končno točko za izračun poti.";
+    }
+
+    function toggleManualSelection() {
+      if (!startMarker || !endMarker) {
+        document.getElementById('manualSelectionInfo').innerHTML = "Izberite začetno in končno točko za izračun poti.";
+      }
+      map.setOptions({draggable: !map.get('draggable')});
+    }
+
+    function calculateRoute() {
+      if (!startMarker || !endMarker) {
+        alert('Najprej postavite začetno in končno točko.');
+        return;
+      }
+
+      var start = startMarker.getPosition();
+      var end = endMarker.getPosition();
+
+      var requestDriving = {
+        origin: start,
+        destination: end,
+        travelMode: google.maps.TravelMode.DRIVING
+      };
+
+      var requestWalking = {
+        origin: start,
+        destination: end,
+        travelMode: google.maps.TravelMode.WALKING
+      };
+
+      var requestBicycling = {
+        origin: start,
+        destination: end,
+        travelMode: google.maps.TravelMode.BICYCLING
+      };
+
+      directionsService.route(requestDriving, function(result, status) {
+        if (status == google.maps.DirectionsStatus.OK) {
+          directionsRendererDriving.setDirections(result);
+          displayRouteInfo(result, 'distanceDriving', 'timeDriving');
+        } else {
+          window.alert('Napaka pri iskanju vožnje: ' + status);
+        }
+      });
+
+      directionsService.route(requestWalking, function(result, status) {
+        if (status == google.maps.DirectionsStatus.OK) {
+          directionsRendererWalking.setDirections(result);
+          displayRouteInfo(result, 'distanceWalking', 'timeWalking');
+        } else {
+          document.getElementById('distanceWalking').innerHTML = "Na žalost ni informacij.";
+          document.getElementById('timeWalking').innerHTML = "";
+        }
+      });
+
+      directionsService.route(requestBicycling, function(result, status) {
+        if (status == google.maps.DirectionsStatus.OK) {
+          directionsRendererBicycling.setDirections(result);
+          displayRouteInfo(result, 'distanceBicycling', 'timeBicycling');
+        } else {
+          document.getElementById('distanceBicycling').innerHTML = "Na žalost ni informacij.";
+          document.getElementById('timeBicycling').innerHTML = "";
+        }
+      });
+
+      document.getElementById('manualSelectionInfo').innerHTML = "";
+    }
+
+    function displayRouteInfo(result, distanceElementId, timeElementId) {
+      var route = result.routes[0];
+      var distance = 0;
+      var time = 0;
+      for (var i = 0; i < route.legs.length; i++) {
+        distance += route.legs[i].distance.value;
+        time += route.legs[i].duration.value;
+      }
+      var distanceInKm = distance / 1000;
+      var hours = Math.floor(time / 3600);
+      var minutes = Math.floor((time % 3600) / 60);
+
+      var distanceText = "Dolžina poti: " + distanceInKm.toFixed(2) + " km";
+      var timeText = "Čas potovanja: " + hours + " ur " + minutes + " minut";
+
+      document.getElementById(distanceElementId).innerHTML = distanceText;
+      document.getElementById(timeElementId).innerHTML = timeText;
+    }
+
+    function addMarkers() {
+      var locations = [
+        {title: 'Športno igrišče Vransko', position: new google.maps.LatLng(46.24250, 14.95090)},
+        {title: 'Izvir potoka Podgrajščica', position: new google.maps.LatLng(46.24628, 14.94060)},
+        {title: 'Spomenik NOB', position: new google.maps.LatLng(46.24331, 14.94920)},
+        {title: 'Razgledna točka', position: new google.maps.LatLng(46.24982, 14.95513)},
+        {title: 'Avtobusna postaja Brode', position: new google.maps.LatLng(46.24850, 14.96391)},
+        {title: 'Kapelica Gorica', position: new google.maps.LatLng(46.23989, 14.94583)},
+        {title: 'Nogometno igrišče Vransko', position: new google.maps.LatLng(46.24328, 14.94590)},
+        {title: 'Pošta Vransko', position: new google.maps.LatLng(46.24564, 14.95271)}
+      ];
+
+      var icons = [
+        'playground.png',
+        'lake.png',
+        'statue-2.png',
+        'photography.png',
+        'bus.png',
+        'chapel-2.png',
+        'soccer.png',
+        'postal.png'
+      ];
+
+      var infoWindows = [
+        '<b>Športno igrišče Vransko</b><BR/><img src="SportnoIgrisce.jpg" width="102">',
+        '<b>Izvir potoka Podgrajščica</b><BR/> <img src="IzvirPod.jpg" width="102"><BR/>Več o dvorcu Podgrad na <a href="https://falajfl.si/kraji-turizem-potovanje/dvorec-podgrad-na-vranskem-ujeto-v-objektiv/">povezavi</a>.',
+        '<b>Spomenik NOB</b><BR/> <img src="Spomenik.jpg" width="102"><BR/>Gre za celopostaven kip borca, ki stoji na podstavku z napisom.<br> Spomenik je zasnoval arhitekt Josip Didek v spomin talcem, borcem ter drugim žrtvam.',
+        '<b>Razgledna točka s pogledom na celoten trg Vranskega.</b><BR/><img src="1.jpg" width="102">',
+        '<b>Avtobusna postaja Brode </b>',
+        '<b>Kapelica Gorica</b><BR/><img src="Gorica.jpg" width="102">',
+        '<b>Nogometno igrišče Vransko</b><BR/> <img src="Fuzbal.jpg" width="102"><BR/>Za nogometno igrišče skrbi <a href="https://nkvransko.si/">Nogometni klub Vransko</a>.',
+        '<b>Pošta Vransko</b><BR/>Odpiralni čas si lahko ogledate na <a href="https://poste.cc/posta/3305-vransko">povezavi</a>.'
+      ];
+
+      function addMarker(title, position, iconIndex) {
+        var marker = new google.maps.Marker({
+          position: position,
+          map: map,
+          icon: icons[iconIndex],
+          title: title
+        });
+
+        var infoWindow = new google.maps.InfoWindow({
+          content: infoWindows[iconIndex]
+        });
+
+        marker.addListener('click', function() {
+          infoWindow.open(map, marker);
+        });
+      }
+
+      addMarker('Športno igrišče Vransko', new google.maps.LatLng(46.24250, 14.95090), 0);
+      addMarker('Izvir potoka Podgrajščica', new google.maps.LatLng(46.24628, 14.94060), 1);
+      addMarker('Spomenik NOB', new google.maps.LatLng(46.24331, 14.94920), 2);
+      addMarker('Razgledna točka', new google.maps.LatLng(46.24982, 14.95513), 3);
+      addMarker('Avtobusna postaja Brode', new google.maps.LatLng(46.24850, 14.96391), 4);
+      addMarker('Kapelica Gorica', new google.maps.LatLng(46.23989, 14.94583), 5);
+      addMarker('Nogometno igrišče Vransko', new google.maps.LatLng(46.24328, 14.94590), 6);
+      addMarker('Pošta Vransko', new google.maps.LatLng(46.24564, 14.95271), 7);
+
+    }
+
+    google.maps.event.addDomListener(window, 'load', initialize);
+  </script>
+</head>
+<body>
+<div id="description">
+    <center><h1>Območje občine Vransko</h1></center>
+    <p>Opis občine Vransko: Občina Vransko leži na jugozahodnem obrobju Spodnje Savinjske doline. Na severozahodu jo obdaja Dobroveljska planota s Čreto, na jugozahodu Posavsko hribovje, proti vzhodu pa se z naselji Čeplje in Prekopa razširja v osrednji del Spodnje Savinjske doline.</p>
+    <p>Površina občine znaša 53,3 km². Sestavljajo jo naselja Brode, Čeplje, Čreta, Jeronim, Limovce, Ločica pri Vranskem, Prapreče, Prekopa, Selo pri Vranskem, Stopnik, Tešova, Vologa, Vransko, Zahomce, Zajasovnik – del in Zaplanina.</p>
+    <p>Legenda pravi, da je bilo nekoč v kotlini, kjer danes leži trg, jezero, ob katerem je živelo veliko vran. Po osušitvi jezera je na tem mestu zraslo naselje, ki so ga poimenovali po teh močvirskih prebivalkah. V trškem grbu, ki od leta 1868 simbolizira trg Vransko ter je od leta 1999 tudi grb Občine Vransko je upodobljena vrana, stoječa na veji prikrajšanega smrekovega debla.</p>
+    <center><img src="grb.jpg" alt="Grb Občine Vransko" /></center>
+  </div>
+  <center><h2>Karta območja Vranskega</h2></center>
+  <div id="map_canvas"></div>
+  <div id="controls">
+    <button id="manualSelection">Ročen izbor</button>
+    <button id="calculateRoute">Izračunaj pot</button>
+    <button id="clearRoute">Počisti pot</button>
+    <div class="info-box">
+      <h3>Vožnja z avtomobilom</h3>
+      <p id="distanceDriving"></p>
+      <p id="timeDriving"></p>
+    </div>
+    <div class="info-box">
+      <h3>Kolesarjenje</h3>
+      <p id="distanceBicycling"></p>
+      <p id="timeBicycling"></p>
+    </div>
+    <div class="info-box">
+      <h3>Hoja</h3>
+      <p id="distanceWalking"></p>
+      <p id="timeWalking"></p>
+    </div>
+    <div id="legend">
+      <h3>Legenda</h3>
+      <div class="legend-item"><span class="legend-color-box" style="background-color: blue;"></span> - Vožnja z avtomobilom</div>
+      <div class="legend-item"><span class="legend-color-box" style="background-color: green;"></span> - Hoja</div>
+      <div class="legend-item"><span class="legend-color-box" style="background-color: red;"></span> - Kolesarjenje</div>
+	  <Br>Avtor: Maja Filač</Br>
+	  <BR>UL FGG, Geodezija in geoinformatika<BR/>
+	  <BR> Datum izdelave: marec 2024<BR>
+    </div>
+    <p id="manualSelectionInfo" style="color: red;"></p>
+  </div>
+</body>
+</html>
